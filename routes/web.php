@@ -1,8 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\ViewsControllers\TaskViewController;
 use Inertia\Inertia;
 
-Route::get('/', function () {
-    return Inertia::render('Welcome');
-})->name('home');
+Route::get('/', [TaskViewController::class, 'index']);
+Route::get('/tasks', [TaskViewController::class, 'taskView'])->name('tasks.index');

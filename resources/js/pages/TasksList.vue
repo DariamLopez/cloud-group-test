@@ -1,5 +1,7 @@
 <script setup>
 import { onMounted, ref, computed } from 'vue';
+import Pagination from '@/components/Pagination.vue';
+import TaskRow from '@/components/TaskRow.vue';
 import api from '../api';
 
 const tasks = ref([]);
@@ -15,6 +17,10 @@ const newKeywordName = ref(''); // para crear una nueva keyword
 const newTitle = ref('');
 const creating = ref(false);
 
+// Server / validation errors from backend (Laravel FormRequest returns 422 + { errors })
+const validationErrors = ref({});
+const errorMessage = ref(null);
+const titleError = ref(false);
 // pagination state
 const pagination = ref({
     current_page: 1,
@@ -49,7 +55,7 @@ const attachKeyword = async (taskId) => {
             tasks.value.data[index] = res.data;
         }
     } catch (e) {
-        console.error(e);
+        errorKeywordAttach = true;
     }
 };
 const detachKeyword = async (keywordId, taskId) => {
@@ -74,9 +80,26 @@ const createKeyword = async () => {
         keywords.value.push(res.data);
         newKeywordName.value = '';
     } catch (e) {
-        console.error(e);
+        if (e.response && e.response.status === 422) {
+            validationErrors.value = e.response.data.errors || {};
+            errorMessage.value = e.response.data.message || null;
+        } else {
+            console.error(e);
+            errorMessage.value = e.message || String(e);
+        }
     }
 };
+// Toggle selection de una keyword (añade o quita)
+function toggleKeywordSelect(keyword) {
+    const idx = selectedKeywords.value.findIndex((k) => k.id === keyword.id);
+    if (idx === -1) {
+        selectedKeywords.value.push(keyword);
+    } else {
+        selectedKeywords.value.splice(idx, 1);
+    }
+    // Actualizar el input con los nombres concatenados
+    keywordsInput.value = selectedKeywords.value.map((k) => k.name).join(', ');
+}
 // Toggle done
 async function toggleDone(task) {
     try {
@@ -94,23 +117,12 @@ async function toggleDone(task) {
         console.error(e);
     }
 }
-// Toggle selection de una keyword (añade o quita)
-function toggleKeywordSelect(keyword) {
-    const idx = selectedKeywords.value.findIndex((k) => k.id === keyword.id);
-    if (idx === -1) {
-        selectedKeywords.value.push(keyword);
-    } else {
-        selectedKeywords.value.splice(idx, 1);
-    }
-    // Actualizar el input con los nombres concatenados
-    keywordsInput.value = selectedKeywords.value.map((k) => k.name).join(', ');
-}
-
-// Helper para comprobar si está seleccionada
-function isSelected(keyword) {
-    return selectedKeywords.value.some((k) => k.id === keyword.id);
-}
 async function createNewTask() {
+    if (newTitle.value.length === 0) {
+        titleError.value = true;
+        console.log("Title is required");
+        return;
+    }
     try {
         let keyword_name = selectedKeywords.value.map((k) => k.name);
         creating.value = true;
@@ -133,7 +145,7 @@ async function createNewTask() {
         selectedKeywords.value = [];
         keywordsInput.value = '';
     } catch (e) {
-        console.error(e);
+        console.error("Error: " + e);
         error.value = e;
     } finally {
         creating.value = false;
@@ -144,7 +156,6 @@ async function fetchTasks(page = 1) {
     try {
         const res = await api.get('/tasks', { params: { page } });
         const payload = res.data;
-        console.log('Fetched tasks payload:', payload);
         // If API returns plain array
         if (Array.isArray(payload)) {
             tasks.value = { data: payload };
@@ -175,6 +186,11 @@ async function fetchTasks(page = 1) {
     <div class="container mt-5">
         <h1 class="mb-4">Tasks</h1>
 
+        <!-- Server error / validation message -->
+        <div v-if="errorMessage" class="alert alert-danger" role="alert">
+            {{ errorMessage }}
+        </div>
+
         <table class="table-striped-columns table-hover table">
             <thead>
                 <tr>
@@ -182,76 +198,22 @@ async function fetchTasks(page = 1) {
                     <th scope="col">Title</th>
                     <th scope="col">DONE</th>
                     <th scope="col">KEYWORDS</th>
+                    <th scope="col">ACTIONS</th>
                 </tr>
             </thead>
             <tbody>
-                <tr v-for="task in tasks.data" :key="task.id">
-                    <th scope="row">{{ task.id }}</th>
-                    <td>{{ task.title }}</td>
-                    <td>
-                        <div class="form-check form-switch">
-                            <input
-                                class="form-check-input"
-                                type="checkbox"
-                                role="switch"
-                                :id="`doneSwitch-${task.id}`"
-                                :checked="task.is_done"
-                                @change="toggleDone(task)"
-                            />
-                        </div>
-                    </td>
-                    <td>
-                        <span
-                            @click="detachKeyword(keyword.id, task.id)"
-                            v-for="keyword in task.keywords"
-                            :key="keyword.id"
-                            class="badge bg-secondary me-1"
-                            style="cursor: pointer"
-                        >
-                            {{ keyword.name }}
-                        </span>
-                        <!--                         <button type="button" class="btn btn-secondary">Secondary</button>
- -->
-                    </td>
-                    <td>
-                        <button
-                            :disabled="creating"
-                            @click="attachKeyword(task.id)"
-                            class="btn btn-sm btn-outline-primary"
-                        >
-                            Attach Keywords
-                        </button>
-                    </td>
-                </tr>
+                <TaskRow v-for="task in tasks.data" :task="task" :selectedKeywords="selectedKeywords" @toggle-done="toggleDone" @attach-keywords="attachKeyword" @detach-keyword="detachKeyword"/>
             </tbody>
         </table>
-        <nav v-if="pagination.last_page > 1" aria-label="Page navigation">
-            <ul class="pagination">
-                <li class="page-item" :class="{ disabled: pagination.current_page <= 1 }">
-                    <button class="page-link" @click="fetchTasks(pagination.current_page - 1)" :disabled="pagination.current_page <= 1">Previous</button>
-                </li>
-
-                <li
-                    class="page-item"
-                    v-for="p in pages"
-                    :key="p"
-                    :class="{ active: p === pagination.current_page }"
-                >
-                    <button class="page-link" @click="fetchTasks(p)">{{ p }}</button>
-                </li>
-
-                <li class="page-item" :class="{ disabled: pagination.current_page >= pagination.last_page }">
-                    <button class="page-link" @click="fetchTasks(pagination.current_page + 1)" :disabled="pagination.current_page >= pagination.last_page">Next</button>
-                </li>
-            </ul>
-        </nav>
+        <Pagination :pagination="pagination" :pages="pages" @change-page="fetchTasks"/>
     </div>
-    <div class="container mt-5">
+    <div class="container mt-3">
         <h1 class="mb-4">Tasks Form</h1>
-
-        <form>
             <div class="mb-3">
                 <label for="exampleInputEmail1" class="form-label">Title</label>
+                <label v-if="titleError" class="text-danger">* Title is required</label>
+                <!-- Server validation error for title -->
+                <div v-if="validationErrors.title" class="text-danger">{{ validationErrors.title[0] }}</div>
                 <input class="form-control" id="exampleInputTitle" v-model="newTitle" placeholder="Add a Title for your task" />
             </div>
             <div class="mb-3">
@@ -269,6 +231,8 @@ async function fetchTasks(page = 1) {
                     </button>
                 </input>
                 </div>
+                <!-- Server validation error for keywords (when creating task) -->
+                <div v-if="validationErrors.keywords" class="text-danger">{{ validationErrors.keywords[0] }}</div>
                 <select class="form-select mt-1" multiple aria-label="Multiple select example">
                     <option @click="toggleKeywordSelect(keyword)" v-for="keyword in keywords" :value="keyword.id">{{ keyword.name }}</option>
                 </select>
@@ -276,9 +240,9 @@ async function fetchTasks(page = 1) {
                     {{ creating ? 'Creating...' : 'Create new task' }}
                 </button>
             </div>
-
-        </form>
-        <input class="form-control mt-3" id="exampleInputTitle" v-model="newKeywordName" placeholder="Add a Title for your task" />
+        <input class="form-control mt-3" id="exampleInputTitle" v-model="newKeywordName" placeholder="Type a keyword" />
+        <!-- Server validation for keyword creation -->
+        <div v-if="validationErrors.name" class="text-danger">{{ validationErrors.name[0] }}</div>
         <button @click="createKeyword" class="btn btn-primary">
             Create new keyword
         </button>

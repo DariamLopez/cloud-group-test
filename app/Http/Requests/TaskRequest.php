@@ -23,22 +23,6 @@ class TaskRequest extends FormRequest
                 'title' => is_string($this->title) ? trim($this->title) : $this->title,
             ]);
         }
-        /* if ($this->has('keywords') && is_array($this->keywords)){
-            $normalized = collect($this->keywords)
-                ->filter(function ($k) {
-                    return $k !== null && $k !== '';
-                })
-                ->map(function ($k) {
-                    return is_string($k) ? mb_strtolower(trim($k)) : $k;
-                })
-                ->filter(function ($k) {
-                    return is_string($k) && $k !== '';
-                })
-                ->unique()
-                ->values()
-                ->all();
-            $this->merge(['keywords' => $normalized]);
-        } */
     }
     /**
      * Get the validation rules that apply to the request.
@@ -54,7 +38,7 @@ class TaskRequest extends FormRequest
             'keywords.*' => ['required','string', 'max:100'],
         ];
     }
-    /* public function messages(): array
+    public function messages(): array
     {
         return [
             'title.required' => 'The title field is required.',
@@ -67,6 +51,6 @@ class TaskRequest extends FormRequest
             'keywords.*.string' => 'Each keyword must be a string.',
             'keywords.*.max' => 'Each keyword may not be greater than 100 characters.',
         ];
-    } */
+    }
 
 }

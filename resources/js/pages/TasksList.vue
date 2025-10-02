@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, computed } from 'vue';
 import api from '../api';
 
 const tasks = ref([]);
@@ -15,16 +15,28 @@ const newKeywordName = ref(''); // para crear una nueva keyword
 const newTitle = ref('');
 const creating = ref(false);
 
+// pagination state
+const pagination = ref({
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+    total: 0,
+});
 onMounted(async () => {
+    await fetchTasks(1);
     try {
-        const res = await api.get('/tasks'); // llamará a /api/tasks
-        tasks.value = res.data;
         const resKeywords = await api.get('/keywords'); // llamará a /api/keywords
         keywords.value = resKeywords.data;
     } catch (e) {
         error.value = e;
         console.error(e);
     }
+});
+const pages = computed(() => {
+    const out = [];
+    const last = pagination.value.last_page || 1;
+    for (let i = 1; i <= last; i++) out.push(i);
+    return out;
 });
 const attachKeyword = async (taskId) => {
     try {
@@ -100,12 +112,12 @@ function isSelected(keyword) {
 }
 async function createNewTask() {
     try {
+        let keyword_name = selectedKeywords.value.map((k) => k.name);
         creating.value = true;
         const payload = {
             title: newTitle.value,
-            keywords: selectedKeywords.value,
+            keywords: keyword_name,
         };
-        console.log('Creating task with payload:', payload);
         const res = await api.post('/tasks', payload);
         const created = res.data;
 
@@ -125,6 +137,37 @@ async function createNewTask() {
         error.value = e;
     } finally {
         creating.value = false;
+    }
+}
+// Fetch tasks with page param and normalize response
+async function fetchTasks(page = 1) {
+    try {
+        const res = await api.get('/tasks', { params: { page } });
+        const payload = res.data;
+        console.log('Fetched tasks payload:', payload);
+        // If API returns plain array
+        if (Array.isArray(payload)) {
+            tasks.value = { data: payload };
+            pagination.value = { current_page: 1, last_page: 1, per_page: payload.length, total: payload.length };
+            return;
+        }
+
+        // If API returns Laravel-style paginator (data + meta)
+        if (payload && Array.isArray(payload.data)) {
+            tasks.value = payload;
+            const meta = payload.meta ?? payload;
+            pagination.value.current_page = meta.current_page ?? payload.current_page ?? 1;
+            pagination.value.last_page = meta.last_page ?? payload.last_page ?? 1;
+            pagination.value.per_page = meta.per_page ?? pagination.value.per_page;
+            pagination.value.total = meta.total ?? pagination.value.total;
+            return;
+        }
+
+        // Fallback
+        tasks.value = { data: [] };
+    } catch (e) {
+        error.value = e;
+        console.error(e);
     }
 }
 </script>
@@ -182,6 +225,26 @@ async function createNewTask() {
                 </tr>
             </tbody>
         </table>
+        <nav v-if="pagination.last_page > 1" aria-label="Page navigation">
+            <ul class="pagination">
+                <li class="page-item" :class="{ disabled: pagination.current_page <= 1 }">
+                    <button class="page-link" @click="fetchTasks(pagination.current_page - 1)" :disabled="pagination.current_page <= 1">Previous</button>
+                </li>
+
+                <li
+                    class="page-item"
+                    v-for="p in pages"
+                    :key="p"
+                    :class="{ active: p === pagination.current_page }"
+                >
+                    <button class="page-link" @click="fetchTasks(p)">{{ p }}</button>
+                </li>
+
+                <li class="page-item" :class="{ disabled: pagination.current_page >= pagination.last_page }">
+                    <button class="page-link" @click="fetchTasks(pagination.current_page + 1)" :disabled="pagination.current_page >= pagination.last_page">Next</button>
+                </li>
+            </ul>
+        </nav>
     </div>
     <div class="container mt-5">
         <h1 class="mb-4">Tasks Form</h1>

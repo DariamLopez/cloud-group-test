@@ -25,6 +25,7 @@ class TaskController extends Controller
     public function store(TaskRequest $request)
     {
         $validated = $request->validated();
+        Log::info('Creating task', $validated);
 
         $data = [
             'title' => $validated['title'],

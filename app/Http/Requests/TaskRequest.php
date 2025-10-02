@@ -23,7 +23,7 @@ class TaskRequest extends FormRequest
                 'title' => is_string($this->title) ? trim($this->title) : $this->title,
             ]);
         }
-        if ($this->has('keywords') && is_array($this->keywords)){
+        /* if ($this->has('keywords') && is_array($this->keywords)){
             $normalized = collect($this->keywords)
                 ->filter(function ($k) {
                     return $k !== null && $k !== '';
@@ -38,7 +38,7 @@ class TaskRequest extends FormRequest
                 ->values()
                 ->all();
             $this->merge(['keywords' => $normalized]);
-        }
+        } */
     }
     /**
      * Get the validation rules that apply to the request.
